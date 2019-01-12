@@ -49,15 +49,18 @@ class CaptioningRNN(object):
         self._end = word_to_idx.get('<END>', None)
 
         # Initialize word vectors
+        # 词索引（V）==>词向量（W）
         self.params['W_embed'] = np.random.randn(vocab_size, wordvec_dim)
         self.params['W_embed'] /= 100
 
         # Initialize CNN -> hidden state projection parameters
+        # 将图像数据（D）==>隐藏层维度（H）
         self.params['W_proj'] = np.random.randn(input_dim, hidden_dim)
         self.params['W_proj'] /= np.sqrt(input_dim)
         self.params['b_proj'] = np.zeros(hidden_dim)
 
         # Initialize parameters for the RNN
+        # 1.将词向量维度==>隐藏层向量维度；2.将前一隐藏层向量（H）==>更新为当前层的隐藏层向量（H）
         dim_mul = {'lstm': 4, 'rnn': 1}[cell_type]
         self.params['Wx'] = np.random.randn(wordvec_dim, dim_mul * hidden_dim)
         self.params['Wx'] /= np.sqrt(wordvec_dim)
@@ -66,11 +69,13 @@ class CaptioningRNN(object):
         self.params['b'] = np.zeros(dim_mul * hidden_dim)
 
         # Initialize output to vocab weights
+        # 将每一个隐藏层向量（H）==>计算相应的类别分数（V）
         self.params['W_vocab'] = np.random.randn(hidden_dim, vocab_size)
         self.params['W_vocab'] /= np.sqrt(hidden_dim)
         self.params['b_vocab'] = np.zeros(vocab_size)
 
         # Cast parameters to correct dtype
+        # 确定数据的datatype
         for k, v in self.params.items():
             self.params[k] = v.astype(self.dtype)
 
@@ -96,6 +101,9 @@ class CaptioningRNN(object):
         # by one relative to each other because the RNN should produce word (t+1)
         # after receiving word t. The first element of captions_in will be the START
         # token, and the first element of captions_out will be the first word.
+
+        # 这里将captions分成了两个部分，captions_in是除了最后一个词外的所有词，是输入到RNN/LSTM的输入；
+        # captions_out是除了第一个词外的所有词，是RNN/LSTM期望得到的输出。
         captions_in = captions[:, :-1]
         captions_out = captions[:, 1:]
 
@@ -140,7 +148,31 @@ class CaptioningRNN(object):
         # Note also that you are allowed to make use of functions from layers.py   #
         # in your implementation, if needed.                                       #
         ############################################################################
-        pass
+        # pass
+
+        # 1.图像数据映射
+        hidden_init, cache_init = affine_forward(features, W_proj, b_proj)
+        # 2.将词嵌入转换成词向量
+        captions_in_init, cache_embed = word_embedding_forward(captions_in, W_embed)
+        # 3.根据cell_type决定网络的前向计算
+        if self.cell_type == 'rnn':
+          hidden_rnn, cache_rnn = rnn_forward(captions_in_init, hidden_init, Wx, Wh, b)
+        else:
+          hidden_rnn, cache_rnn = lstm_forward(captions_in_init, hidden_init, Wx, Wh, b)
+        # 4.计算词预测类别分数
+        scores, cache_scores = temporal_affine_forward(hidden_rnn, W_vocab, b_vocab)
+        # 5.计算最终的loss和对scores的导数
+        loss, dscores = temporal_softmax_loss(scores, captions_out, mask)
+        # 6.反向传播
+        dhidden_rnn, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dscores, cache_scores)
+        if self.cell_type == 'rnn':
+          dcaptions_in_init, dhidden_init, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dhidden_rnn, cache_rnn)
+        else:
+          dcaptions_in_init, dhidden_init, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dhidden_rnn, cache_rnn)
+        grads['W_embed'] = word_embedding_backward(dcaptions_in_init, cache_embed)
+        dfeatures, grads['W_proj'], grads['b_proj'] = affine_backward(dhidden_init, cache_init)
+
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -205,7 +237,33 @@ class CaptioningRNN(object):
         # NOTE: we are still working over minibatches in this function. Also if   #
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
-        pass
+        #pass
+
+        # 1.计算由imag特征计算而来的初始H
+        hidden_init, _ = affine_forward(features, W_proj, b_proj)
+        # 2.将start词嵌入,得到第一个词向量
+        start_word_embed, _ = word_embedding_forward(self._start, W_embed)
+        
+        hidden_curr = hidden_init
+        cell_curr = np.zeros_like(hidden_curr)
+        word_embed = start_word_embed
+
+        for step in range(max_length):
+          if self.cell_type == 'rnn':
+            # 记忆单元计算
+            hidden_curr, _ = rnn_step_forward(word_embed, hidden_curr, Wx, Wh, b)
+          else:
+            hidden_curr, cell_curr, _ = lstm_step_forward(word_embed, hidden_curr, cell_curr, Wx, Wh, b)
+
+          # 计算当前的得分
+          step_scores, _ = affine_forward(hidden_curr, W_vocab, b_vocab)
+          # 根据当前预测的词的得分找到相应的最合适的词的索引
+          captions[:, step] = np.argmax(step_scores, axis=1)
+          # 将当前的预测作为下一次的word向量输入
+          word_embed, _ = word_embedding_forward(captions[:, step], W_embed)
+
+
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################

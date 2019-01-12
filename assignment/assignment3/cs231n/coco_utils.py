@@ -8,12 +8,22 @@ BASE_DIR = 'cs231n/datasets/coco_captioning'
 def load_coco_data(base_dir=BASE_DIR,
                    max_train=None,
                    pca_features=True):
+
+    # out
     data = {}
+
+    #==================================captions==================================#
     caption_file = os.path.join(base_dir, 'coco2014_captions.h5')
     with h5py.File(caption_file, 'r') as f:
         for k, v in f.items():
             data[k] = np.asarray(v)
+    # caption里面有四种数据：
+    # 1.train_captions
+    # 2.train_image_idxs
+    # 3.val_captions
+    # 4.val_image_idxs
 
+    #=============================features(train, val)==========================#
     if pca_features:
         train_feat_file = os.path.join(base_dir, 'train2014_vgg16_fc7_pca.h5')
     else:
@@ -28,12 +38,17 @@ def load_coco_data(base_dir=BASE_DIR,
     with h5py.File(val_feat_file, 'r') as f:
         data['val_features'] = np.asarray(f['features'])
 
+    #===============================vocab==============================#
     dict_file = os.path.join(base_dir, 'coco2014_vocab.json')
     with open(dict_file, 'r') as f:
         dict_data = json.load(f)
         for k, v in dict_data.items():
             data[k] = v
+    # 两种数据：
+    # 1.idx_to_word
+    # 2.word_to_idx
 
+    #=================================image urls===============================#
     train_url_file = os.path.join(base_dir, 'train2014_urls.txt')
     with open(train_url_file, 'r') as f:
         train_urls = np.asarray([line.strip() for line in f])
@@ -43,8 +58,9 @@ def load_coco_data(base_dir=BASE_DIR,
     with open(val_url_file, 'r') as f:
         val_urls = np.asarray([line.strip() for line in f])
     data['val_urls'] = val_urls
+    #===========================================================================#
 
-    # Maybe subsample the training data
+    # Maybe subsample the training data, 参数max_train控制输出数据的大小，否则就全部输出
     if max_train is not None:
         num_train = data['train_captions'].shape[0]
         mask = np.random.randint(num_train, size=max_train)
@@ -59,7 +75,9 @@ def decode_captions(captions, idx_to_word):
     if captions.ndim == 1:
         singleton = True
         captions = captions[None]
+    # out
     decoded = []
+    
     N, T = captions.shape
     for i in range(N):
         words = []

@@ -130,12 +130,14 @@ class CaptioningSolver(object):
         self.val_acc_history = []
 
         # Make a deep copy of the optim_config for each parameter
+        # 每一个优化算法都有一个更新参数配置optim_configs
         self.optim_configs = {}
         for p in self.model.params:
             d = {k: v for k, v in self.optim_config.items()}
             self.optim_configs[p] = d
 
 
+    # 负责每一步的参数更新
     def _step(self):
         """
         Make a single gradient update. This is called by train() and should not
@@ -206,8 +208,11 @@ class CaptioningSolver(object):
         """
         Run optimization to train the model.
         """
+        # 总的样本
         num_train = self.data['train_captions'].shape[0]
+        # 迭代完一个完整的种群需要多少个batch
         iterations_per_epoch = max(num_train // self.batch_size, 1)
+        # 迭代完num个完整的种群需要多少个batch操作
         num_iterations = self.num_epochs * iterations_per_epoch
 
         for t in range(num_iterations):
